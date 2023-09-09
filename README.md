@@ -1,6 +1,6 @@
 # Vulkan Studying repository
 
-Nothing much here, just trying to learn Vulkan API based on [vulkan-tutorial](https://vulkan-tutorial.com).
+Nothing much here, just trying to learn Vulkan API based on [vulkan-tutorial](https://vulkan-tutorial.com). Strongly recommend reading [Learning Modern 3D Graphics Programming](https://paroj.github.io/gltut/) if you're not familiar with computer graphics.
 
 ## Dependencies
 You can install the dependencies by running ```sudo make install```
