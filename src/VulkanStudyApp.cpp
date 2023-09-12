@@ -21,6 +21,8 @@ void VulkanStudyApp::initWindow()
 void VulkanStudyApp::initVulkan()
 {
     createInstance();
+    pickPhysicalDevice();
+    createLogicalDevice();
 }
 
 void VulkanStudyApp::mainLoop()
@@ -91,16 +93,16 @@ void VulkanStudyApp::createInstance()
 
 bool VulkanStudyApp::checkValidationLayerSupport()
 {
+    // get the number of available layers
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
+    // get the available layers
     std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-
+    // check if all the layers in validationLayers are in availableLayers
     for (const char *layerName : validationLayers)
     {
         bool layerFound = false;
-
         for (const auto &layerProperties : availableLayers)
         {
             if (strcmp(layerName, layerProperties.layerName) == 0)
@@ -109,51 +111,43 @@ bool VulkanStudyApp::checkValidationLayerSupport()
                 break;
             }
         }
-
+        // if one of the layers is not found, return false
         if (!layerFound)
         {
             return false;
         }
     }
-
     return true;
 }
 
 void VulkanStudyApp::pickPhysicalDevice()
 {
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-
     uint32_t deviceCount = 0;
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
     if (deviceCount == 0)
     {
         throw std::runtime_error("failed to find GPUs with Vulkan support!");
     }
 
-    for (const auto &device : devices)
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+    // if there are no devices with Vulkan support
+    if (deviceCount == 0)
     {
-        if (isDeviceSuitable(device))
-        {
-            physicalDevice = device;
-            break;
-        }
+        throw std::runtime_error("failed to find GPUs with Vulkan support!");
     }
-    if (physicalDevice == VK_NULL_HANDLE)
-    {
-        throw std::runtime_error("failed to find a suitable GPU!");
-    }
+    printf("deviceCount: %d\n", deviceCount);
 
-    // Use an ordered map to automatically sort candidates by increasing score
+    // use an ordered map to automatically sort candidates by increasing score
     std::multimap<int, VkPhysicalDevice> candidates;
-
-    for (const auto &device : devices)
+    for (auto device : devices)
     {
+        printf("device: %p\n", device);
         int score = rateDeviceSuitability(device);
         candidates.insert(std::make_pair(score, device));
     }
-
-    // Check if the best candidate is suitable at all
+    // check if the best candidate is suitable at all
     if (candidates.rbegin()->first > 0)
     {
         physicalDevice = candidates.rbegin()->second;
@@ -166,36 +160,44 @@ void VulkanStudyApp::pickPhysicalDevice()
 
 int VulkanStudyApp::rateDeviceSuitability(VkPhysicalDevice device)
 {
-    int score = 0;
-    // get the properties and features of the device
     VkPhysicalDeviceProperties deviceProperties;
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
     vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
+    printf("deviceProperties.deviceName: %s\n", deviceProperties.deviceName);
+    int score = 0;
     // Discrete GPUs have a significant performance advantage
     if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
     {
         score += 1000;
     }
-
     // Maximum possible size of textures affects graphics quality
     score += deviceProperties.limits.maxImageDimension2D;
-
     // Application can't function without geometry shaders
     if (!deviceFeatures.geometryShader)
     {
+        printf("score: %d\n [NO GEOMETRY SHADER]", score);
         return 0;
     }
-
+    printf("score: %d\n", score);
     return score;
 }
 
-bool VulkanStudyApp::isDeviceSuitable(VkPhysicalDevice device)
+bool isDeviceSuitable(VkPhysicalDevice device)
 {
-    QueueFamilyIndices indices = findQueueFamilies(device);
+    if (device == VK_NULL_HANDLE)
+    {
+        printf("device is VK_NULL_HANDLE\n");
+        return false;
+    }
+    VkPhysicalDeviceProperties deviceProperties;
+    VkPhysicalDeviceFeatures deviceFeatures;
+    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-    return indices.isComplete();
+    printf("deviceProperties.deviceName: %s\n", deviceProperties.deviceName);
+    return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+           deviceFeatures.geometryShader;
 }
 
 QueueFamilyIndices VulkanStudyApp::findQueueFamilies(VkPhysicalDevice device)
@@ -204,29 +206,82 @@ QueueFamilyIndices VulkanStudyApp::findQueueFamilies(VkPhysicalDevice device)
     // Logic to find queue family indices to populate struct with
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);                      // vector to hold all the queue families
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data()); // populate the vector
 
     int i = 0;
     for (const auto &queueFamily : queueFamilies)
     {
-        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        // check if the queue family has at least 1 queue in order to support the operations we need
+        if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
         {
-            indices.graphicsFamily = i;
+            // if the queue family has the capability of presenting to our window surface
+            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            {
+                indices.graphicsFamily = i;
+            }
         }
-        i++;
         if (indices.isComplete())
         {
             break;
         }
+        i++;
+    }
+    return indices;
+}
+
+void VulkanStudyApp::createLogicalDevice()
+{
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+    // create a queue from the queue family
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+    queueCreateInfo.queueCount = 1;
+
+    // specify the priority of the queue, required even if there is only one queue
+    float queuePriority = 1.0f;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    // specify the set of device features that we'll be using
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    // create the logical device
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+    // specify the queues to create
+    createInfo.pQueueCreateInfos = &queueCreateInfo;
+    createInfo.queueCreateInfoCount = 1;
+
+    // specify the device features to use
+    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    // specify the extensions to enable
+    createInfo.enabledExtensionCount = 0;
+
+    if (enableValidationLayers)
+    {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+        createInfo.ppEnabledLayerNames = validationLayers.data();
+    }
+    else
+    {
+        createInfo.enabledLayerCount = 0;
     }
 
-    return indices;
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create logical device!");
+    }
+
+    vkGetDeviceQueue(logicalDevice, indices.graphicsFamily.value(), 0, &graphicsQueue);
 }
 
 void VulkanStudyApp::cleanup()
 {
+    vkDestroyDevice(logicalDevice, nullptr);
     vkDestroyInstance(instance, nullptr);
     glfwDestroyWindow(VulkanStudyApp::window);
     glfwTerminate();

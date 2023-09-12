@@ -38,7 +38,9 @@ public:
 private:
     GLFWwindow *window;
     VkInstance instance;
-    VkDevice device;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice logicalDevice;
+    VkQueue graphicsQueue;
 
     void initWindow();
     void initVulkan();
@@ -49,5 +51,6 @@ private:
     int rateDeviceSuitability(VkPhysicalDevice device);
     bool isDeviceSuitable(VkPhysicalDevice device);
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    void createLogicalDevice();
     void cleanup();
 };
