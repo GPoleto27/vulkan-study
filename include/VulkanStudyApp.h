@@ -10,13 +10,15 @@
 #include <cstdlib>
 #include <map>
 #include <optional>
+#include <set>
 
 typedef struct QueueFamilyIndices
 {
     std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
     bool isComplete()
     {
-        return graphicsFamily.has_value();
+        return graphicsFamily.has_value() && presentFamily.has_value();
     }
 } QueueFamilyIndices;
 
@@ -41,6 +43,9 @@ private:
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice logicalDevice;
     VkQueue graphicsQueue;
+    // The window surface needs to be created right after the instance creation, because it can actually influence the physical device selection.
+    VkSurfaceKHR surface;
+    VkQueue presentQueue;
 
     void initWindow();
     void initVulkan();
@@ -52,5 +57,6 @@ private:
     bool isDeviceSuitable(VkPhysicalDevice device);
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     void createLogicalDevice();
+    void createSurface();
     void cleanup();
 };

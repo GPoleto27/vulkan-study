@@ -21,6 +21,7 @@ void VulkanStudyApp::initWindow()
 void VulkanStudyApp::initVulkan()
 {
     createInstance();
+    createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
 }
@@ -212,19 +213,18 @@ QueueFamilyIndices VulkanStudyApp::findQueueFamilies(VkPhysicalDevice device)
     int i = 0;
     for (const auto &queueFamily : queueFamilies)
     {
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if (presentSupport)
+            indices.presentFamily = i;
+
         // check if the queue family has at least 1 queue in order to support the operations we need
         if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-        {
-            // if the queue family has the capability of presenting to our window surface
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            {
-                indices.graphicsFamily = i;
-            }
-        }
+            indices.graphicsFamily = i;
+
         if (indices.isComplete())
-        {
             break;
-        }
+
         i++;
     }
     return indices;
@@ -232,17 +232,22 @@ QueueFamilyIndices VulkanStudyApp::findQueueFamilies(VkPhysicalDevice device)
 
 void VulkanStudyApp::createLogicalDevice()
 {
+
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
-    // create a queue from the queue family
-    VkDeviceQueueCreateInfo queueCreateInfo{};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-    queueCreateInfo.queueCount = 1;
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
-    // specify the priority of the queue, required even if there is only one queue
     float queuePriority = 1.0f;
-    queueCreateInfo.pQueuePriorities = &queuePriority;
+    for (uint32_t queueFamily : uniqueQueueFamilies)
+    {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
     // specify the set of device features that we'll be using
     VkPhysicalDeviceFeatures deviceFeatures{};
@@ -252,8 +257,8 @@ void VulkanStudyApp::createLogicalDevice()
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
     // specify the queues to create
-    createInfo.pQueueCreateInfos = &queueCreateInfo;
-    createInfo.queueCreateInfoCount = 1;
+    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
     // specify the device features to use
     createInfo.pEnabledFeatures = &deviceFeatures;
@@ -276,12 +281,23 @@ void VulkanStudyApp::createLogicalDevice()
         throw std::runtime_error("failed to create logical device!");
     }
 
+    vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
     vkGetDeviceQueue(logicalDevice, indices.graphicsFamily.value(), 0, &graphicsQueue);
+}
+
+void VulkanStudyApp::createSurface()
+{
+    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create window surface!");
+    }
 }
 
 void VulkanStudyApp::cleanup()
 {
     vkDestroyDevice(logicalDevice, nullptr);
+    // Destroy the surface right before the window
+    vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
     glfwDestroyWindow(VulkanStudyApp::window);
     glfwTerminate();
